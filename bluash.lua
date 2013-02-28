@@ -1,7 +1,14 @@
+testing = true
+
+
+-- change this module-global value to false to have trace() not print anything
 traceOn = true
 
--- Trace is a print() function that only prints if traceOn = true. When it prints, 
--- it prefixes the line with the file/line where the trace() is called
+
+--[[
+Trace is a print() function that only prints if traceOn = true. When it prints, 
+it prefixes the line with the file/line where the trace() is called
+--]]
 function trace(...)
     if traceOn == true then
         dgInfo = debug.getinfo(2)
@@ -9,8 +16,14 @@ function trace(...)
         print(prefix .. ...)
     end
 end
-        
--- Create 'script' table
+     
+	 
+--[[
+Returns a table with details about script that loaded bluash module: 
+- path: path to script
+- interpreter: path to interpreter 
+- arg: table of command line arguments
+--]]
 local function initScript(arg)
     -- table.foreach(arg, function (...) print('  ', ...) end)
     local script = {
@@ -26,6 +39,8 @@ local function initScript(arg)
     return script
 end
 
+
+-- Most things in bluash go in 'sh' table
 sh = {
     script = initScript(arg)
 }
@@ -34,76 +49,127 @@ local function exec(expr)
     return assert(loadstring('return '..expr))()
 end
 
-function tprint(tt, indent, addIndent)
-    if type(tt) == 'string' then
-        print(tt .. ' = {')
-        tprint(exec(tt), 4)
-        print('}')
-        return
-    end
-    
-    if addIndent == nil then addIndent = 4 end
-    if indent == nil then indent = 0 end
-    local indentStr = string.rep(' ', indent)
-    for k,v in pairs(tt) do
-        if type(v) == 'table' then
-            print(indentStr .. k .. ' = {')
-            tprint(v, indent+addIndent, addIndent)
-            print(indentStr .. '}')
-        else
-            print(indentStr .. k .. ' = ' ..tostring(v))
-        end
-    end
-end
-
 trace 'bluash loaded'
 
-trace 'command line args as seen by bluash:'
 
--- table.foreach(script, print)
-tprint('sh.script')
-tprint('sh.script.interpreter')
-
-
-pred = {
-    equal = function (lhs, rhs) 
-                return function(...) 
-                    return lhs(...) == rhs 
-                end 
-            end, 
-}
-    
-function foreach(tt)
-    tbl = tt[1]
-    action = tt[2]
-    what = tt[3]
-    
-    local true_action = action
-    if what == 'key' then
-        true_action = function (key) action(key) end
-    elseif what == 'value' then
-        true_action = function (_, value) action(value) end
-    end
-    
-    local foreach_action = true_action
-    if tt.filter ~= nil then
-        local filter = tt.filter
-        foreach_action = function (k, v) 
-                            if filter(k, v) == true then 
-                                true_action(k, v) 
-                            end 
-                        end
-    end
-
-    table.foreach(tbl, foreach_action)
+function isnumber(obj)
+	return type(obj) == 'number'
 end
 
-function only_arg(indx, func) 
-    return  function (...) 
-                print(func, unpack(arg), arg.n, indx, arg[indx])
-                func(arg[indx]) 
-            end 
-end 
+
+function isstring(obj)
+	return type(obj) == 'string'
+end
+
+
+function isboolean(obj)
+	return type(obj) == 'boolean'
+end
+
+
+function key(k, _) 
+	return k
+end
+
+
+function value(_, v)
+	return v
+end
+
+--[[
+foreach {mytable, myfunc, iterator, filter=myfilter}
+
+applies myfunc(x) to each x in mytable that satisfies filter(x), where x 
+is returned by iterator(mytable).
+
+Example: 
+    With tt = {'a', 'b', 'c', d:1, e:2, f:3, g:4}
+	
+		foreach {tt, print}
+	
+	outputs 
+	
+		1	a
+		2	b
+		3	c
+	
+	whereas 
+
+		iseven = function (_,v) return type(v) == 'number' and v % 2 == 0 end
+		foreach {tt, print, pairs, filter=iseven}
+	
+	outputs
+	
+		e	2
+		g	4
+--]]
+function foreach(tbl, action, iterator, filter)
+	local items
+	local itemFilter
+    if action == nil then -- assume all args in a table
+		items = tbl[1]
+		action = tbl[2]
+		iterator = tbl[3] or ipairs
+		itemFilter = tbl.filter
+	else
+		items = tbl
+		iterator = iterator or ipairs
+		itemFilter = filter
+	end
+    
+    if itemFilter == nil then
+		for k,v in iterator(items) do 
+			action(k,v)
+		end
+	else
+		for k,v in iterator(items) do 
+			if itemFilter(k,v) == true then
+				action(k,v)
+			end
+		end
+    end
+end
+
+-- foreach using ipairs as iterator
+function foreachi(tbl, action, filter)
+	foreach(tbl, action, ipairs, filter)
+end
+
+-- foreach using pairs as iterator
+function foreachkv(tbl, action, filter)
+	foreach(tbl, action, pairs, filter)
+end
+
+
+if testing then
+	local tt = {'a', 'b', 'c', d=1, e=2, f=3, g=4}
+	foreach {tt, print}
+	print '---'
+	foreach(tt, print)
+	print '---'
+	foreachi {tt, print}
+	print '---'
+
+	local iseven = function (k,v) return isnumber(v) and v % 2 == 0 end
+	foreach {tt, print, pairs, filter=iseven}
+	print '---'
+	foreachkv(tt, print, iseven)
+end
+	
+
+-- table holding all function generators
+gen = {}
+
+-- table holding all predicate function generators
+gen.pred = {}
+
+-- generates a predicate function that will test fn(...) == result
+function gen.pred.equal(fn, result) 
+	return function(...) 
+		return fn(...) == result 
+	end 
+end
+
 
 --[[ 
 Generates a function which, given two arguments, tests whether its 
@@ -112,10 +178,10 @@ the name of the type ('function', 'table', etc). But typename can be
 an array of type names, in which case the generated function tests 
 whether the second argument is of a type in array. 
 ]]
-function genfn_istype_value(typename)
+function gen.istype(typename)
     local argType = type(typename)
     if argType == 'string' then
-        return  function (_, v) 
+        return  function (obj) 
                     return type(v) == typename 
                 end
     elseif argType == 'table' then
@@ -133,34 +199,31 @@ function genfn_istype_value(typename)
     end
 end 
 
-function isstring(obj)
-    return type(obj) == 'string'
-end
 
-function isnumber(obj)
-    return type(obj) == 'number'
-end
+--[[
+	Generates a function that passes only the indx'th argument to func:
+	
+		f2 = gen.only_arg(2, myfunc)
+		f2(arg1, b, ...) 
+	
+	is same as 
+	
+		myfunc(b)
+--]]
+function gen.only_arg(indx, func) 
+    return  function (...) 
+                -- print(func, unpack(arg), arg.n, indx, arg[indx])
+                func(arg[indx]) 
+            end 
+end 
 
-function gen_indent_print(count)
-    return function (...) 
-                value = arg[2]
-                if value == nil then
-                    print( string.rep(' ', count), arg[1])
-                else
-                    if type(value) ~= 'number' and type(value) ~= 'boolean' then 
-                        value = "'" .. tostring(value) .. "'" 
-                    end
-                    print( string.rep(' ', count), arg[1], '=', value)
-                end
-            end
-end
 
 
 -- Taken from metalua stdlib 
 -- Courtesy of lua-users.org
-function string.split(str, pat)
+function string.split(str, pattern)
    local t = {} 
-   local fpat = "(.-)" .. pat
+   local fpat = "(.-)" .. pattern
    local last_end = 1
    local s, e, cap = string.find(str, fpat, 1)
    while s do
@@ -187,11 +250,13 @@ local function EnvVar(varName)
     local mt = {
         __index = function (self, name) 
                     -- return a function that forwards all method calls to 'self.value as string' 
+					trace ('getting field '..name)
+					if name == 'value' then return nil end
                     return function(self, ...) return string[name](self.value, ...) end
                 end,
         __tostring = function (self) 
                     trace ('Converting env var '.. self.name .. ' to string')
-                    return self.name .. ': ' .. self.value 
+                    return tostring(rawget(self, 'value'))
                 end,
     }
     setmetatable(envVar, mt)
@@ -217,6 +282,27 @@ local function OSEnv()
 end
 
 sh.env = OSEnv()
+sh.env.__doc = [[
+Access the OS environment variables. They are fields of sh.env, created dynamically. 
+Hence
+
+	a = sh.env.HOME 
+
+set a to an object which has two fields: name and value, and behaves as a string:
+
+	print(a.name, a.value, a:sub(5,7))
+
+will print 'HOME    something    th'. Note that string operations will raise an error()
+if env var does not exist (a.value is nil).
+]]
+
+
+if testing then
+    local home = sh.env.HOME
+	print(home)
+	print(sh.env.windir)
+	print(sh.env.windir:sub(4))
+end
 
 
 function newMultiPath(multiPath)
