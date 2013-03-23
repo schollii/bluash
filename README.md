@@ -68,5 +68,5 @@ Other than OS commands that are platform specific, bluash should work on Windows
 that has command shell and Lua): same language syntax (although with bash, who would need something like 
 bluash on Linux? Maybe for cross-platform scripting?)
 
-[Examples of shell scripting operations](docs/UsageByExample.md) are the starting point for specification and 
-design of bluash. Some [detailed design](wiki/Basic-design) ideas are available too. 
+[Examples of shell scripting operations](docs/usage_by_example/main.md) are the starting point for specification and 
+design of bluash. Some [detailed design](docs/detailed_design/main.md) ideas are available too. 
