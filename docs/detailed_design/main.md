@@ -19,6 +19,6 @@ Main components:
 
 Detailed design:
 
-* [string templating](detailed_design/string_formatting.md)
+* [string templating](string_formatting.md)
 
 
