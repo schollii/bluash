@@ -40,9 +40,31 @@ local function initScript(arg)
 end
 
 
--- Most things in bluash go in 'sh' table
+--[[
+Any object that has __doc string or __doc = {__main="...", key1="...", ...} can be 
+given to help() to print the documentation. 
+--]]
+function help(obj)
+	if obj.__doc == nil then 
+		print('no help available') 
+	else
+		if type(obj.__doc) == 'string' then 
+			print(obj.__doc)
+		else
+			print(obj.__doc.__main or 'no obj doc')
+			foreachkv(obj.__doc, print, function (k,_) return k~='__main' end)
+		end
+	end
+end
+
+
+-- Shell-related things in bluash go in 'sh' table
 sh = {
-    script = initScript(arg)
+    script = initScript(arg),
+	__doc = {
+		__main="table of shell items", 
+		script="information about the script that loaded bluash",
+	},
 }
 
 local function exec(expr)
@@ -76,11 +98,13 @@ function value(_, v)
 	return v
 end
 
+
 --[[
 foreach {mytable, myfunc, iterator, filter=myfilter}
 
-applies myfunc(x) to each x in mytable that satisfies filter(x), where x 
-is returned by iterator(mytable).
+applies myfunc(key, value) to each (key, value) pair in mytable that satisfies 
+filter(key,value) == true; key, value are returned by iterator(mytable).
+If iterator is not specified, ipairs is used. 
 
 Example: 
     With tt = {'a', 'b', 'c', d:1, e:2, f:3, g:4}
@@ -218,26 +242,46 @@ function gen.only_arg(indx, func)
 end 
 
 
+function extendString()
+	-- Taken from metalua stdlib 
+	-- Courtesy of lua-users.org
+	function string.split(str, char)
+	   local t = {} 
+	   local fpat = "(.-)" .. char
+	   local last_end = 1
+	   local s, e, cap = string.find(str, fpat, 1)
+	   while s do
+		  if s ~= 1 or cap ~= "" then
+			  table.insert(t,cap)
+		   end
+		  last_end = e+1
+		  s, e, cap = string.find(str, fpat, last_end)
+	   end
+	   if last_end <= string.len(str) then
+		  cap = string.sub(str, last_end)
+		  table.insert(t, cap)
+	   end
+	   return t
+	end
 
--- Taken from metalua stdlib 
--- Courtesy of lua-users.org
-function string.split(str, pattern)
-   local t = {} 
-   local fpat = "(.-)" .. pattern
-   local last_end = 1
-   local s, e, cap = string.find(str, fpat, 1)
-   while s do
-      if s ~= 1 or cap ~= "" then
-          table.insert(t,cap)
-       end
-      last_end = e+1
-      s, e, cap = string.find(str, fpat, last_end)
-   end
-   if last_end <= string.len(str) then
-      cap = string.sub(str, last_end)
-      table.insert(t, cap)
-   end
-   return t
+	strMT = getmetatable("")
+	strMT.__mod = function (str, item)
+		trace(str, item)
+		return string.format(str, item)
+	end
+	
+	string.__doc = {
+		__main = "module for string operations",
+		split = "split given string on given char",
+	}
+end
+
+extendString()
+
+if testing then
+	help(string)
+	help(sh)
+	print("a format %f abc %f" % 123 % 532)
 end
 
 
@@ -274,15 +318,17 @@ local function OSEnv()
                 return envVar
             end,
         __newindex = function (self, name, value)
-                trace ('would set env var '..name..' to value '..tostring(value))
+				if name == '__doc' then
+					rawset(self, name, value)
+				else
+					trace ('would set env var '..name..' to value '..tostring(value))
+				end
             end
         }
     setmetatable(env, meta)
-    return env
-end
-
-sh.env = OSEnv()
-sh.env.__doc = [[
+	
+	-- add docs: 
+	env.__doc = [[
 Access the OS environment variables. They are fields of sh.env, created dynamically. 
 Hence
 
@@ -296,8 +342,14 @@ will print 'HOME    something    th'. Note that string operations will raise an 
 if env var does not exist (a.value is nil).
 ]]
 
+    return env
+end
+
+sh.env = OSEnv()
+
 
 if testing then
+	help(sh.env)
     local home = sh.env.HOME
 	print(home)
 	print(sh.env.windir)
@@ -309,7 +361,8 @@ function newMultiPath(multiPath)
     return multiPath:split(';')
 end
 
-    
+print("Multipath:", newMultiPath("asdf;def;ghi")[1])
+
 local function dir(module, modName)
     local iprint = gen_indent_print(4)
 
