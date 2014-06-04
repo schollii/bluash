@@ -1,12 +1,12 @@
   
   
-***Usage examples for basic use of the bluash: capabilities & syntax arising from use of 
+***Usage examples for basic use of bluash, ie focus on capabilities & syntax arising from use of 
 Lua as the scripting environment: module required, use command line arguments given to script, call 
-"sub procedures", branch on conditions, pretty print, help, etc.***
+procedures, branch on conditions, pretty print, help, etc.***
 
-Basic functionality: 
+Load module: 
 
-    > require 'bluash' -- lua-based shell environment
+    > require('bluash')
 
 Will provide bluash.os, bluash.fs, bluash.io, etc. These can also be "merged" into global env: 
 
@@ -20,11 +20,7 @@ Shell creates the 'script' struct, containing:
     script.path -- path to where script located
 
 No need for echo, use print() function instead.
-
-In Lua the types are: nil, boolean, number, string, function, thread, userdata, table. Objects, classes, 
-data structure are all represented via tables and metatables. 
-
-To print tables use pprint:
+To print tables use the "pretty printer" pprint; items on separate lines:
 
     > pprint (123, 456, 789)
     1: 123
